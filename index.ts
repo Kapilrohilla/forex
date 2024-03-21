@@ -3,6 +3,9 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 //@ts-ignore
 import FyersAPI from "fyers-api-v3";
+import mongoose from "mongoose";
+import db from "./db";
+
 // import axios from "axios";
 
 const app = express();
@@ -14,9 +17,10 @@ const FyersSocket = FyersAPI.fyersDataSocket;
 
 const appId = "ZQ003KAXPG-100";
 fyers.setAppId("ZQ003KAXPG-100");
-fyers.setRedirectUrl(
-  "https://trade.fyers.in/api-login/redirect-uri/index.html"
-);
+const MONGODB_DB = "mongodb://localhost:27017?dbName=forex";
+// fyers.setRedirectUrl(
+//   "https://trade.fyers.in/api-login/redirect-uri/index.html"
+// );
 
 var generateAuthcodeURL = fyers.generateAuthCode();
 console.log(generateAuthcodeURL);
@@ -42,13 +46,25 @@ const secretKey = "EW5959XZ55";
 //   });
 
 const access_token =
-  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJhcGkuZnllcnMuaW4iLCJpYXQiOjE3MTA4MjQyODksImV4cCI6MTcxMDg5NDYwOSwibmJmIjoxNzEwODI0Mjg5LCJhdWQiOlsieDowIiwieDoxIiwieDoyIiwiZDoxIiwieDoxIiwieDowIl0sInN1YiI6ImFjY2Vzc190b2tlbiIsImF0X2hhc2giOiJnQUFBQUFCbC1SdGg4bUJJNTVqeWJNVHQ2NEctdE5PdWR2eXBLV1pTajg2MnphYW50NVRzSUM5bDJkS2NxUHQ1Z0ttWk1Bc2NZa3VQUjRmSUlIZ3RvSTNUdXBLVnVGVG5aTmJkOHBWT3JIX1YyMWRVamk1MmduST0iLCJkaXNwbGF5X25hbWUiOiJSQUpBVCBQQVJNRU5EUkEgU0lOR0giLCJvbXMiOiJLMSIsImhzbV9rZXkiOiJjMWFhMDVkMjkzZjQ1YzgxZDI2Njc5YTE2YTlhNDgxYTVlZDc0ZjdiOTRjZjIzMGExMGFiYTUyYyIsImZ5X2lkIjoiWVIwNjE4NSIsImFwcFR5cGUiOjEwMCwicG9hX2ZsYWciOiJOIn0.HEY7l-HlhuUYIDaZVv5Pgya9d4Lqf_m4FVugWOkdNSg";
+  "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJhcGkuZnllcnMuaW4iLCJpYXQiOjE3MTEwMDIyMjUsImV4cCI6MTcxMTA2NzQ0NSwibmJmIjoxNzExMDAyMjI1LCJhdWQiOlsieDowIiwieDoxIiwieDoyIiwiZDoxIiwieDoxIiwieDowIl0sInN1YiI6ImFjY2Vzc190b2tlbiIsImF0X2hhc2giOiJnQUFBQUFCbC05SnhrNHdfY01EY3h1RmJTc1gtNDVlWXdPVlcwS2hjOXdfa1U0bndSLXlCclV4dHM1X2hMbDZRT3R4TjhEbl8wT25NcUhpeVdxcy1SZjRTdFd2X0dfQzVwbWR4RG1DRmNPZ3dSTGVlZkdyWjdqcz0iLCJkaXNwbGF5X25hbWUiOiJSQUpBVCBQQVJNRU5EUkEgU0lOR0giLCJvbXMiOiJLMSIsImhzbV9rZXkiOiJjMWFhMDVkMjkzZjQ1YzgxZDI2Njc5YTE2YTlhNDgxYTVlZDc0ZjdiOTRjZjIzMGExMGFiYTUyYyIsImZ5X2lkIjoiWVIwNjE4NSIsImFwcFR5cGUiOjEwMCwicG9hX2ZsYWciOiJOIn0.gU0JKLqb08sMtuwalpy3IPBUe1lKdYRKj93njwI1WlQ";
 
 function onmsg(message: any) {
+  const { symbol } = message;
+  message.createdAt = new Date();
+  db.collection(symbol)
+    .insertOne(message)
+    .then(() => {})
+    .catch((err) => {
+      console.error(err?.message);
+    });
   io.emit("newMessage", message);
 }
 
 var fyersdata = new FyersSocket(`${appId}:${access_token}`);
+mongoose
+  .connect(MONGODB_DB)
+  .then((r) => console.log("db connected"))
+  .catch((err) => console.error(err));
 
 function onconnect() {
   fyersdata.subscribe([
@@ -276,7 +292,22 @@ fyersdata.connect();
 app.get("/", (req, res) => {
   return res.sendStatus(200);
 });
-
+app.get("/lastData", async (req, res) => {
+  const lastRecords: any = [];
+  const collections = await db.listCollections();
+  for (let i = 0; i < collections.length; i++) {
+    const collectionName = collections[i].name;
+    const fb = await db
+      .collection(collectionName)
+      .findOne({}, { sort: { createdAt: -1 } });
+    lastRecords.push(fb);
+  }
+  return res.status(200).send({
+    status: 200,
+    message: "OK",
+    lastRecords,
+  });
+});
 io.on("connection", (socket) => {
   console.log(`a user connected ${socket.id}`);
 });
